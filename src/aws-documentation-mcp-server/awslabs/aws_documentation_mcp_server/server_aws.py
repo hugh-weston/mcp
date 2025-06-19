@@ -15,6 +15,7 @@
 
 import httpx
 import json
+import os
 import re
 
 # Import models
@@ -32,14 +33,46 @@ from awslabs.aws_documentation_mcp_server.util import (
     parse_recommendation_results,
 )
 from loguru import logger
-from mcp.server.fastmcp import Context, FastMCP
+# from mcp.server.fastmcp import Context, FastMCP
+from fastmcp import Context, FastMCP
 from pydantic import Field
-from typing import List
+from typing import List, Literal
 
 
 SEARCH_API_URL = 'https://proxy.search.docs.aws.amazon.com/search'
 RECOMMENDATIONS_API_URL = 'https://contentrecs-api.docs.aws.amazon.com/v1/recommendations'
+CODE_EXAMPLES_GITHUB_URL = 'https://raw.githubusercontent.com/awsdocs/aws-doc-sdk-examples/refs/heads/main/'
 
+METADATA_FILE = os.getenv('METADATA_FILE', "example_meta.json")
+SNIPPETS_FILE = os.getenv('SNIPPETS_FILE', "example_meta_snippets.json")
+
+ServiceType = Literal[
+    "accessanalyzer", "acm", "acm-pca", "alexa-for-business", "api-gateway", "apigatewaymanagementapi", "apigatewayv2", "application-auto-scaling", "app-mesh", 
+    "appconfig", "application-discovery-service", "apprunner", "appstream", "athena", "auditmanager", "aurora", "auto-scaling", "auto-scaling-plans", "backup", 
+    "batch", "bedrock", "bedrock-runtime", "bedrock-agent", "bedrock-agent-runtime", "budgets", "chime", "cloud9", "cloudcontrol", "cloudformation", "cloudfront", 
+    "cloudsearch-domain", "cloudtrail", "cloudwatch", "cloudwatch-events", "cloudwatch-logs", "codeartifact", "codebuild", "codecommit", "codedeploy", "codeguru-reviewer", 
+    "codepipeline", "codestar", "codestar-connections", "codestar-notifications", "cognito", "cognito-identity", "cognito-identity-provider", "cognito-sync", "comprehend", 
+    "comprehendmedical", "config-service", "connect", "cost-and-usage-report-service", "cost-explorer", "data-pipeline", "database-migration-service", "datasync", "dax", 
+    "detective", "device-farm", "direct-connect", "directory-service", "directory-service-data", "dlm", "docdb", "dynamodb", "dynamodb-streams", "ebs", "ec2", "ec2-instance-connect", 
+    "ecr", "ecr-public", "ecs", "efs", "eks", "elastic-beanstalk", "elastic-load-balancing", "elastic-load-balancing-v2", "elastic-transcoder", "elasticache", "elasticsearch-service", 
+    "emr", "emr-containers", "entityresolution", "eventbridge", "firehose", "forecast", "fis", "fms", "fsx", "gamelift", "geo-maps", "geo-places", "geo-routes", "glacier", 
+    "global-accelerator", "glue", "grafana", "greengrass", "greengrassv2", "guardduty", "health", "healthlake", "iam", "imagebuilder", "inspector", "inspector2", "iot", "iot-data-plane", 
+    "iot-events", "iot-events-data", "iot-jobs-data-plane", "iot-wireless", "iotanalytics", "iotdeviceadvisor", "iotfleetwise", "iotsitewise", "iotthingsgraph", "ivs", "ivs-realtime", 
+    "ivschat", "kafka", "keyspaces", "kendra", "kinesis", "kinesis-analytics-v2", "kms", "lakeformation", "lambda", "lex", "license-manager", "lightsail", "location", "lookoutvision", 
+    "machine-learning", "macie2", "marketplace", "marketplace-agreement", "marketplace-catalog", "mediaconnect", "mediaconvert", "medialive", "mediapackage", "mediapackage-vod", "mediastore", 
+    "mediastore-data", "mediatailor", "medical-imaging", "migration-hub", "memorydb", "neptune", "networkmanager", "networkmonitor", "networkflowmonitor", "nimble", "oam", "observabilityadmin", 
+    "omics", "opensearch", "opsworks", "opsworkscm", "organizations", "outposts", "partnercentral-selling", "payment-cryptography", "payment-cryptography-data", "personalize", 
+    "personalize-runtime", "personalize-events", "pi", "pinpoint", "pinpoint-email", "pinpoint-sms-voice", "pipes", "polly", "pricing", "proton", "qldb", "ram", "rds", "rds-data", "redshift", 
+    "rekognition", "resource-explorer-2", "resource-groups", "resource-groups-tagging-api", "robomaker", "route-53", "route-53-domains", "route53profiles", "route53-recovery-cluster", 
+    "route53resolver", "s3", "s3-control", "s3-directory-buckets", "sagemaker", "scheduler", "secrets-manager", "securityhub", "securitylake", "serverlessapplicationrepository", "service-catalog", 
+    "service-catalog-appregistry", "service-quotas", "servicediscovery", "ses", "sesv2", "sfn", "shield", "signer", "snowball", "sns", "sqs", "ssm", "ssm-contacts", "ssm-incidents", 
+    "storage-gateway", "sts", "support", "swf", "synthetics", "textract", "transcribe", "transcribe-streaming", "transcribe-medical", "translate", "trustedadvisor", "verifiedpermissions", 
+    "vpc-lattice", "waf", "waf-regional", "wafv2", "workdocs", "workmail", "workmailmessageflow", "workspaces", "xray"
+]
+
+LanguageType = Literal[
+    "any", ".NET", "Bash", "C++", "CLI", "Go", "IAMPolicyGrammar", "Java", "JavaScript", "Kotlin", "PHP", "PowerShell", "Python", "Ruby", "Rust", "SAP ABAP", "Swift"
+]
 
 mcp = FastMCP(
     'awslabs.aws-documentation-mcp-server',
@@ -64,6 +97,8 @@ mcp = FastMCP(
     - Use `read_documentation` when: You have a specific documentation URL and need its content
     - Use `recommend` when: You want to find related content to a documentation page you're already viewing or need to find newly released information
     - Use `recommend` as a fallback when: Multiple searches have not yielded the specific information needed
+    - Use `search_code_examples` when: You need to find the available code examples related to a specific AWS service and SDK
+    - Use `read_code_example` when: You have a specific code example name and need its content
     """,
     dependencies=[
         'pydantic',
@@ -72,6 +107,96 @@ mcp = FastMCP(
     ],
 )
 
+@mcp.tool()
+async def search_code_examples(
+    ctx: Context,
+    service: ServiceType = Field(description="AWS service name to search examples for"),
+    language: LanguageType = Field(default="any", description="Programming language/SDK to filter examples by"),
+    limit: int = Field(default=15, ge=1, le=25)
+) -> List[str]:
+    """Searches for code examples in the aws-doc-sdk-examples repository using the provided metadata.
+    Returns a list of examples that match the service and language criteria.
+
+    ## Usage
+    Use this tool to get a list of the available code examples for a specific AWS service and programming language.
+
+    Args:
+        ctx: MCP context for logging and error handling
+        service: the service being used
+        language: the language being used
+        limit: Maximum number of code examples to return
+
+    Returns:
+        List of the code examples matching the service and language.
+    """
+    with open(METADATA_FILE, 'r') as f:
+        metadata = json.load(f)
+    
+    logger.debug("filtering examples")
+
+    filtered_examples = []
+    for example_name, example_data in metadata["examples"].items():
+        if example_name.startswith(service):
+            if language == "any" or language in example_data.get("languages", {}):
+                filtered_examples.append(example_name)    
+
+    if not filtered_examples:
+        return []
+
+    return filtered_examples[:limit]
+
+@mcp.tool()
+async def read_code_example(
+    ctx: Context,
+    example_name: str,
+    language: LanguageType = Field(description="Programming language/SDK of the example")
+) -> str:
+    """Reads and returns the full file contents of a specific code example.
+
+    ## Usage
+    After finding the name of a relevant example using search_code_examples, use this tool to read the actual code content.
+    """
+    with open(METADATA_FILE, 'r') as f:
+        metadata = json.load(f)
+
+    if example_name not in metadata["examples"]:
+        return f"Example '{example_name}' not found."
+
+    try:
+        if language == "any":
+            return f"Please specify an available language for example '{example_name}' "
+        if language not in metadata["examples"][example_name]["languages"]:
+            return f"Code example '{example_name}' is not available in {language}"
+
+        versions = metadata["examples"][example_name]["languages"][language].get('versions', [])
+        snippet_tags = []
+        for version in versions:
+            excerpts = version.get('excerpts', [])
+            for excerpt in excerpts:
+                tags = excerpt.get('snippet_tags', [])
+                snippet_tags.extend(tags)
+    except (AttributeError, TypeError):
+        return f"No code content found for example '{example_name}' in {language}"
+
+    if snippet_tags:
+        with open(SNIPPETS_FILE, 'r') as f:
+            snippets = json.load(f)
+
+        source_files = []
+        for snippet in snippet_tags:
+            if snippet in snippets['snippets']:
+                source_file = snippets['snippets'][snippet]["file"]
+                source_files.append(source_file)
+
+        if source_files:
+            for file in source_files:
+                f = file.split('/aws-doc-sdk-examples/')[-1]
+                full_file_path = os.path.join(CODE_EXAMPLES_GITHUB_URL, f)
+
+                # need to update to allow for multiple source files, change 10000
+                return await read_documentation_impl(ctx, full_file_path, 10000, 0)
+
+    return "No code content found."
 
 @mcp.tool()
 async def read_documentation(

@@ -57,3 +57,9 @@ target/
 
 # PyPI
 .pypirc
+
+.amazonq/
+
+read_metadata.py
+example_meta.json
+example_meta_snippets.json
