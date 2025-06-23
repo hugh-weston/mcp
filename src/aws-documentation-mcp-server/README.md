@@ -31,8 +31,8 @@ Configure the MCP server in your MCP client configuration (e.g., for Amazon Q De
       "env": {
         "FASTMCP_LOG_LEVEL": "ERROR",
         "AWS_DOCUMENTATION_PARTITION": "aws",
-        "METADATA_FILE": "example_meta.json",
-        "SNIPPETS_FILE": "example_meta_snippets.json"
+        "EXAMPLE_METADATA_FILE": "example_meta.json",
+        "EXAMPLE_SNIPPETS_FILE": "example_meta_snippets.json"
       },
       "disabled": false,
       "autoApprove": []

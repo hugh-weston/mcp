@@ -43,8 +43,21 @@ SEARCH_API_URL = 'https://proxy.search.docs.aws.amazon.com/search'
 RECOMMENDATIONS_API_URL = 'https://contentrecs-api.docs.aws.amazon.com/v1/recommendations'
 CODE_EXAMPLES_GITHUB_URL = 'https://raw.githubusercontent.com/awsdocs/aws-doc-sdk-examples/refs/heads/main/'
 
-METADATA_FILE = os.getenv('METADATA_FILE', "example_meta.json")
-SNIPPETS_FILE = os.getenv('SNIPPETS_FILE', "example_meta_snippets.json")
+EXAMPLE_METADATA_FILE = os.getenv('EXAMPLE_METADATA_FILE', "example_meta.json")
+EXAMPLE_SNIPPETS_FILE = os.getenv('EXAMPLE_SNIPPETS_FILE', "example_meta_snippets.json")
+
+EXAMPLE_METADATA = {}
+EXAMPLE_SNIPPETS = {}
+
+try:
+    with open(EXAMPLE_METADATA_FILE, 'r') as f:
+        EXAMPLE_METADATA = json.load(f)
+    with open(EXAMPLE_SNIPPETS_FILE, 'r') as f:
+        EXAMPLE_SNIPPETS = json.load(f)
+    logger.info("Successfully loaded metadata files")
+except Exception as e:
+    logger.error(f"Failed to load metadata files: {e}")
+    raise RuntimeError(f"Failed to load metadata files: {e}")
 
 ServiceType = Literal[
     "accessanalyzer", "acm", "acm-pca", "alexa-for-business", "api-gateway", "apigatewaymanagementapi", "apigatewayv2", "application-auto-scaling", "app-mesh", 
@@ -97,7 +110,7 @@ mcp = FastMCP(
     - Use `read_documentation` when: You have a specific documentation URL and need its content
     - Use `recommend` when: You want to find related content to a documentation page you're already viewing or need to find newly released information
     - Use `recommend` as a fallback when: Multiple searches have not yielded the specific information needed
-    - Use `search_code_examples` when: You need to find the available code examples related to a specific AWS service and SDK
+    - Use `search_code_examples` when: You need to find the available code examples related to a specific AWS service, action, and SDK
     - Use `read_code_example` when: You have a specific code example name and need its content
     """,
     dependencies=[
@@ -129,18 +142,19 @@ async def search_code_examples(
     Returns:
         List of the code examples matching the service and language.
     """
-    with open(METADATA_FILE, 'r') as f:
-        metadata = json.load(f)
-    
-    logger.debug("filtering examples")
-
-    filtered_examples = []
-    for example_name, example_data in metadata["examples"].items():
-        if example_name.startswith(service):
-            if language == "any" or language in example_data.get("languages", {}):
-                filtered_examples.append(example_name)    
+    try:
+        filtered_examples = []
+        for example_name, example_data in EXAMPLE_METADATA["examples"].items():
+            if example_name.startswith(service):
+                if language == "any" or language in example_data.get("languages", {}):
+                    filtered_examples.append(example_name)  
+    except (KeyError, TypeError) as e:
+        await ctx.error(f"Error accessing example metadata: {e}")
+        return []  
+        
 
     if not filtered_examples:
+        await ctx.error(f"No code examples found for service '{service}' in language '{language}'")
         return []
 
     return filtered_examples[:limit]
@@ -148,7 +162,7 @@ async def search_code_examples(
 @mcp.tool()
 async def read_code_example(
     ctx: Context,
-    example_name: str,
+    example_id: str,
     language: LanguageType = Field(description="Programming language/SDK of the example")
 ) -> str:
     """Reads and returns the full file contents of a specific code example.
@@ -156,19 +170,19 @@ async def read_code_example(
     ## Usage
     After finding the name of a relevant example using search_code_examples, use this tool to read the actual code content.
     """
-    with open(METADATA_FILE, 'r') as f:
-        metadata = json.load(f)
-
-    if example_name not in metadata["examples"]:
-        return f"Example '{example_name}' not found."
+    if example_id not in EXAMPLE_METADATA["examples"]:
+        await ctx.error(f"Example '{example_id}' not found.")
+        raise AttributeError(f"Example '{example_id}' not found.")
 
     try:
         if language == "any":
-            return f"Please specify an available language for example '{example_name}' "
-        if language not in metadata["examples"][example_name]["languages"]:
-            return f"Code example '{example_name}' is not available in {language}"
+            await ctx.error(f"Please specify an available language for example '{example_id}' ")
+            return f"Please specify an available language for example '{example_id}' "
+        if language not in EXAMPLE_METADATA["examples"][example_id]["languages"]:
+            await ctx.error(f"Code example '{example_id}' is not available in {language}")
+            return f"Code example '{example_id}' is not available in {language}"
 
-        versions = metadata["examples"][example_name]["languages"][language].get('versions', [])
+        versions = EXAMPLE_METADATA["examples"][example_id]["languages"][language].get('versions', [])
         snippet_tags = []
         for version in versions:
             excerpts = version.get('excerpts', [])
@@ -176,22 +190,20 @@ async def read_code_example(
                 tags = excerpt.get('snippet_tags', [])
                 snippet_tags.extend(tags)
     except (AttributeError, TypeError):
-        return f"No code content found for example '{example_name}' in {language}"
+        await ctx.error(f"No code content found for example '{example_id}' in {language}")
+        return f"No code content found for example '{example_id}' in {language}"
 
     if snippet_tags:
-        with open(SNIPPETS_FILE, 'r') as f:
-            snippets = json.load(f)
-
         source_files = []
         for snippet in snippet_tags:
-            if snippet in snippets['snippets']:
-                source_file = snippets['snippets'][snippet]["file"]
+            if snippet in EXAMPLE_SNIPPETS['snippets']:
+                source_file = EXAMPLE_SNIPPETS['snippets'][snippet]["file"]
                 source_files.append(source_file)
 
         if source_files:
             for file in source_files:
                 f = file.split('/aws-doc-sdk-examples/')[-1]
-                full_file_path = os.path.join(CODE_EXAMPLES_GITHUB_URL, f)
+                full_file_path = f"{CODE_EXAMPLES_GITHUB_URL}/{f}"
 
                 # need to update to allow for multiple source files, change 10000
                 return await read_documentation_impl(ctx, full_file_path, 10000, 0)
