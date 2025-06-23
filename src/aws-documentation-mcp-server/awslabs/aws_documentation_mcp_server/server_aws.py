@@ -36,7 +36,7 @@ from loguru import logger
 # from mcp.server.fastmcp import Context, FastMCP
 from fastmcp import Context, FastMCP
 from pydantic import Field
-from typing import List, Literal
+from typing import Dict, List, Literal, Union
 
 
 SEARCH_API_URL = 'https://proxy.search.docs.aws.amazon.com/search'
@@ -124,8 +124,7 @@ mcp = FastMCP(
 async def search_code_examples(
     ctx: Context,
     service: ServiceType = Field(description="AWS service name to search examples for"),
-    language: LanguageType = Field(default="any", description="Programming language/SDK to filter examples by"),
-    limit: int = Field(default=15, ge=1, le=25)
+    language: LanguageType = Field(default="any", description="Programming language/SDK to filter examples by")
 ) -> List[str]:
     """Searches for code examples in the aws-doc-sdk-examples repository using the provided metadata.
     Returns a list of examples that match the service and language criteria.
@@ -137,8 +136,6 @@ async def search_code_examples(
         ctx: MCP context for logging and error handling
         service: the service being used
         language: the language being used
-        limit: Maximum number of code examples to return
-
     Returns:
         List of the code examples matching the service and language.
     """
@@ -157,58 +154,80 @@ async def search_code_examples(
         await ctx.error(f"No code examples found for service '{service}' in language '{language}'")
         return []
 
-    return filtered_examples[:limit]
+    return filtered_examples
 
 @mcp.tool()
 async def read_code_example(
     ctx: Context,
-    example_id: str,
+    example_ids: Union[str, List[str]],
     language: LanguageType = Field(description="Programming language/SDK of the example")
-) -> str:
-    """Reads and returns the full file contents of a specific code example.
+) -> Dict[str, str]:
+    """Reads and returns the full file contents of one or more code examples.
 
     ## Usage
     After finding the name of a relevant example using search_code_examples, use this tool to read the actual code content.
+    Accepts either a single example_id or a list of example_ids.
     """
-    if example_id not in EXAMPLE_METADATA["examples"]:
-        await ctx.error(f"Example '{example_id}' not found.")
-        raise AttributeError(f"Example '{example_id}' not found.")
+    if isinstance(example_ids, str):
+        example_ids = [example_ids]
 
-    try:
-        if language == "any":
-            await ctx.error(f"Please specify an available language for example '{example_id}' ")
-            return f"Please specify an available language for example '{example_id}' "
-        if language not in EXAMPLE_METADATA["examples"][example_id]["languages"]:
-            await ctx.error(f"Code example '{example_id}' is not available in {language}")
-            return f"Code example '{example_id}' is not available in {language}"
+    if not example_ids:
+        await ctx.error("No example IDs provided.")
+        return {"error": "No example IDs provided."}
 
-        versions = EXAMPLE_METADATA["examples"][example_id]["languages"][language].get('versions', [])
-        snippet_tags = []
-        for version in versions:
-            excerpts = version.get('excerpts', [])
-            for excerpt in excerpts:
-                tags = excerpt.get('snippet_tags', [])
-                snippet_tags.extend(tags)
-    except (AttributeError, TypeError):
-        await ctx.error(f"No code content found for example '{example_id}' in {language}")
-        return f"No code content found for example '{example_id}' in {language}"
+    results = {}
 
-    if snippet_tags:
-        source_files = []
-        for snippet in snippet_tags:
-            if snippet in EXAMPLE_SNIPPETS['snippets']:
-                source_file = EXAMPLE_SNIPPETS['snippets'][snippet]["file"]
-                source_files.append(source_file)
+    for example_id in example_ids:
+        if example_id not in EXAMPLE_METADATA["examples"]:
+            await ctx.error(f"Example '{example_id}' not found.")
+            results[example_id] = f"Example '{example_id}' not found."
+            continue
 
-        if source_files:
-            for file in source_files:
-                f = file.split('/aws-doc-sdk-examples/')[-1]
-                full_file_path = f"{CODE_EXAMPLES_GITHUB_URL}/{f}"
+        try:
+            if language == "any":
+                await ctx.error(f"Please specify an available language for example '{example_id}' ")
+                results[example_id] = f"Please specify an available language for example '{example_id}' "
+                continue
 
-                # need to update to allow for multiple source files, change 10000
-                return await read_documentation_impl(ctx, full_file_path, 10000, 0)
+            if language not in EXAMPLE_METADATA["examples"][example_id]["languages"]:
+                await ctx.error(f"Code example '{example_id}' is not available in {language}")
+                results[example_id] = f"Code example '{example_id}' is not available in {language}"
+                continue
 
-    return "No code content found."
+            versions = EXAMPLE_METADATA["examples"][example_id]["languages"][language].get('versions', [])
+            snippet_tags = []
+            for version in versions:
+                excerpts = version.get('excerpts', [])
+                for excerpt in excerpts:
+                    tags = excerpt.get('snippet_tags', [])
+                    snippet_tags.extend(tags)
+
+            if snippet_tags:
+                source_files = []
+                for snippet in snippet_tags:
+                    if snippet in EXAMPLE_SNIPPETS['snippets']:
+                        source_file = EXAMPLE_SNIPPETS['snippets'][snippet]["file"]
+                        source_files.append(source_file)
+
+                if source_files:
+                    example_content = []
+                    for file in source_files:
+                        f = file.split('/aws-doc-sdk-examples/')[-1]
+                        full_file_path = f"{CODE_EXAMPLES_GITHUB_URL}/{f}"
+
+                        content = await read_documentation_impl(ctx, full_file_path, read_full=True)
+                        example_content.append(content)
+                    
+                    results[example_id] = "\n\n".join(example_content)
+                    continue
+                
+            results[example_id] = "No code content found."
+
+        except (AttributeError, TypeError):
+            await ctx.error(f"No code content found for example '{example_id}' in {language}")
+            results[example_id] = f"No code content found for example '{example_id}' in {language}"
+
+    return results
 
 @mcp.tool()
 async def read_documentation(
@@ -276,7 +295,7 @@ async def read_documentation(
         await ctx.error(f'Invalid URL: {url_str}. URL must end with .html')
         raise ValueError('URL must end with .html')
 
-    return await read_documentation_impl(ctx, url_str, max_length, start_index)
+    return await read_documentation_impl(ctx, url_str, max_length=max_length, start_index=start_index)
 
 
 @mcp.tool()
