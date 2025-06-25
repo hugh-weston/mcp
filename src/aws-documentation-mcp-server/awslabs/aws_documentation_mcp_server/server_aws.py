@@ -22,6 +22,7 @@ import re
 from awslabs.aws_documentation_mcp_server.models import (
     RecommendationResult,
     SearchResult,
+    CodeExampleResult,
 )
 from awslabs.aws_documentation_mcp_server.server_utils import (
     DEFAULT_USER_AGENT,
@@ -125,7 +126,7 @@ async def search_code_examples(
     ctx: Context,
     service: ServiceType = Field(description="AWS service name to search examples for"),
     language: LanguageType = Field(default="any", description="Programming language/SDK to filter examples by")
-) -> List[str]:
+) -> List[CodeExampleResult]:
     """Searches for code examples in the aws-doc-sdk-examples repository using the provided metadata.
     Returns a list of examples that match the service and language criteria.
 
@@ -137,24 +138,46 @@ async def search_code_examples(
         service: the service being used
         language: the language being used
     Returns:
-        List of the code examples matching the service and language.
+        List of code examples matching the service and language, along with their version and description (optional).
     """
     try:
         filtered_examples = []
-        for example_name, example_data in EXAMPLE_METADATA["examples"].items():
-            if example_name.startswith(service):
-                if language == "any" or language in example_data.get("languages", {}):
-                    filtered_examples.append(example_name)  
+        for example_id, example_data in EXAMPLE_METADATA["examples"].items():
+            if example_id.startswith(service):
+                languages_data = example_data.get("languages", {})
+
+                if language == "any":
+                    target_languages = languages_data.keys()
+                else: 
+                    target_languages = [language] if language in languages_data else []
+
+                for lang in target_languages:
+                    lang_data = languages_data[lang]
+                    for version in lang_data.get("versions", []):
+                        descriptions = []
+                        for excerpt in version.get("excerpts", []):
+                            if excerpt.get("description"):
+                                descriptions.append(excerpt["description"])
+
+                        combined_description = " ".join(descriptions) if descriptions else None
+
+                        filtered_examples.append(
+                            CodeExampleResult(
+                                example_id=example_id,
+                                language=lang,
+                                version=str(version.get("sdk_version", "")),
+                                description=combined_description
+                            )
+                        )  
+        if not filtered_examples:
+            await ctx.error(f"No code examples found for service '{service}' in language '{language}'")
+            return []
+
+        return filtered_examples
+
     except (KeyError, TypeError) as e:
         await ctx.error(f"Error accessing example metadata: {e}")
-        return []  
-        
-
-    if not filtered_examples:
-        await ctx.error(f"No code examples found for service '{service}' in language '{language}'")
         return []
-
-    return filtered_examples
 
 @mcp.tool()
 async def read_code_example(
@@ -165,8 +188,16 @@ async def read_code_example(
     """Reads and returns the full file contents of one or more code examples.
 
     ## Usage
-    After finding the name of a relevant example using search_code_examples, use this tool to read the actual code content.
-    Accepts either a single example_id or a list of example_ids.
+    After finding examples using search_code_examples, use this to read the actual code content.
+    Accepts either a single example_id or a list of example_ids. When providing multiple examples, 
+    they must all use the same programming language.
+
+    Args:
+        ctx: MCP context for logging and error handling
+        example_ids: Single example_id or list of example_ids (must use same language)
+        language: Programming language/SDK to read the examples in
+    Returns:
+        Dictionary mapping example_ids to their code content
     """
     if isinstance(example_ids, str):
         example_ids = [example_ids]
@@ -174,6 +205,10 @@ async def read_code_example(
     if not example_ids:
         await ctx.error("No example IDs provided.")
         return {"error": "No example IDs provided."}
+
+    if language == "any":
+        await ctx.error(f"Please specify a specific language to read code examples.")
+        return {"error": "Please specify a specific language to read code examples."}
 
     results = {}
 
@@ -184,17 +219,14 @@ async def read_code_example(
             continue
 
         try:
-            if language == "any":
-                await ctx.error(f"Please specify an available language for example '{example_id}' ")
-                results[example_id] = f"Please specify an available language for example '{example_id}' "
-                continue
+            example_data = EXAMPLE_METADATA["examples"][example_id]
 
-            if language not in EXAMPLE_METADATA["examples"][example_id]["languages"]:
+            if language not in example_data["languages"]:
                 await ctx.error(f"Code example '{example_id}' is not available in {language}")
                 results[example_id] = f"Code example '{example_id}' is not available in {language}"
                 continue
 
-            versions = EXAMPLE_METADATA["examples"][example_id]["languages"][language].get('versions', [])
+            versions = example_data["languages"][language].get('versions', [])
             snippet_tags = []
             for version in versions:
                 excerpts = version.get('excerpts', [])
