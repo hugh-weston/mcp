@@ -36,30 +36,36 @@ from awslabs.aws_documentation_mcp_server.util import (
 from loguru import logger
 # from mcp.server.fastmcp import Context, FastMCP
 from fastmcp import Context, FastMCP
+from pathlib import Path
 from pydantic import Field
-from typing import Dict, List, Literal, Union
+from typing import Dict, List, Literal, Tuple, Union
 
 
 SEARCH_API_URL = 'https://proxy.search.docs.aws.amazon.com/search'
 RECOMMENDATIONS_API_URL = 'https://contentrecs-api.docs.aws.amazon.com/v1/recommendations'
 CODE_EXAMPLES_GITHUB_URL = 'https://raw.githubusercontent.com/awsdocs/aws-doc-sdk-examples/refs/heads/main/'
 
-EXAMPLE_METADATA_FILE = os.getenv('EXAMPLE_METADATA_FILE', "example_meta.json")
-EXAMPLE_SNIPPETS_FILE = os.getenv('EXAMPLE_SNIPPETS_FILE', "example_meta_snippets.json")
+def snippet_loader(metadata_file: Path, snippets_file: Path) -> Tuple[Dict, Dict]:
+    metadata, snippets = {}, {}
+    try:
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+        with open(snippets_file, 'r') as f:
+            snippets = json.load(f)
+        logger.info("Successfully loaded metadata files")
+    except Exception as e:
+        error_msg = f"Failed to load metadata files: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
 
-EXAMPLE_METADATA = {}
-EXAMPLE_SNIPPETS = {}
+    return metadata, snippets
 
-try:
-    with open(EXAMPLE_METADATA_FILE, 'r') as f:
-        EXAMPLE_METADATA = json.load(f)
-    with open(EXAMPLE_SNIPPETS_FILE, 'r') as f:
-        EXAMPLE_SNIPPETS = json.load(f)
-    logger.info("Successfully loaded metadata files")
-except Exception as e:
-    logger.error(f"Failed to load metadata files: {e}")
-    raise RuntimeError(f"Failed to load metadata files: {e}")
+metadata_file = Path(os.getenv('AWS_DOCUMENTATION_CODE_EXAMPLE_METADATA_FILE', "example_meta.json"))
+snippets_file = Path(os.getenv('AWS_DOCUMENTATION_CODE_EXAMPLE_SNIPPETS_FILE', "example_meta_snippets.json"))
 
+EXAMPLE_METADATA, EXAMPLE_SNIPPETS = snippet_loader(metadata_file, snippets_file)
+
+# All unique AWS services with code examples
 ServiceType = Literal[
     "accessanalyzer", "acm", "acm-pca", "alexa-for-business", "api-gateway", "apigatewaymanagementapi", "apigatewayv2", "application-auto-scaling", "app-mesh", 
     "appconfig", "application-discovery-service", "apprunner", "appstream", "athena", "auditmanager", "aurora", "auto-scaling", "auto-scaling-plans", "backup", 
@@ -140,6 +146,8 @@ async def search_code_examples(
     Returns:
         List of code examples matching the service and language, along with their version and description (optional).
     """
+    logger.debug(f"Searching code examples for service: {service}, language: {language}")
+
     try:
         filtered_examples = []
         for example_id, example_data in EXAMPLE_METADATA["examples"].items():
@@ -170,14 +178,29 @@ async def search_code_examples(
                             )
                         )  
         if not filtered_examples:
-            await ctx.error(f"No code examples found for service '{service}' in language '{language}'")
-            return []
+            error_msg = f"No code examples found for service '{service}' in language '{language}'"
+            logger.error(error_msg)
+            await ctx.error(error_msg)
+            return [CodeExampleResult(
+                example_id="",
+                language="",
+                version="",
+                description=error_msg
+            )]
 
+        logger.debug(f"Found {len(filtered_examples)} examples")
         return filtered_examples
 
     except (KeyError, TypeError) as e:
-        await ctx.error(f"Error accessing example metadata: {e}")
-        return []
+        error_msg = f"Error accessing example metadata: {e}"
+        logger.error(error_msg)
+        await ctx.error(error_msg)
+        return [CodeExampleResult(
+            example_id="",
+            language="",
+            version="",
+            description=error_msg
+        )]
 
 @mcp.tool()
 async def read_code_example(
@@ -199,31 +222,39 @@ async def read_code_example(
     Returns:
         Dictionary mapping example_ids to their code content
     """
+    logger.debug(f"Reading code examples: {example_ids} in language: {language}")
+
     if isinstance(example_ids, str):
         example_ids = [example_ids]
 
     if not example_ids:
-        await ctx.error("No example IDs provided.")
-        return {"error": "No example IDs provided."}
+        error_msg = "No example IDs provided."
+        await ctx.error(error_msg)
+        return {"error": error_msg}
 
     if language == "any":
-        await ctx.error(f"Please specify a specific language to read code examples.")
-        return {"error": "Please specify a specific language to read code examples."}
+        error_msg = "Please specify a specific language to read code examples."
+        await ctx.error(error_msg)
+        return {"error": error_msg}
 
     results = {}
 
     for example_id in example_ids:
         if example_id not in EXAMPLE_METADATA["examples"]:
-            await ctx.error(f"Example '{example_id}' not found.")
-            results[example_id] = f"Example '{example_id}' not found."
+            error_msg = f"Example '{example_id}' not found."
+            logger.error(error_msg)
+            await ctx.error(error_msg)
+            results[example_id] = error_msg
             continue
 
         try:
             example_data = EXAMPLE_METADATA["examples"][example_id]
 
             if language not in example_data["languages"]:
-                await ctx.error(f"Code example '{example_id}' is not available in {language}")
-                results[example_id] = f"Code example '{example_id}' is not available in {language}"
+                error_msg = f"Code example '{example_id}' is not available in {language}"
+                logger.error(error_msg)
+                await ctx.error(error_msg)
+                results[example_id] = error_msg
                 continue
 
             versions = example_data["languages"][language].get('versions', [])
@@ -256,9 +287,12 @@ async def read_code_example(
             results[example_id] = "No code content found."
 
         except (AttributeError, TypeError):
-            await ctx.error(f"No code content found for example '{example_id}' in {language}")
-            results[example_id] = f"No code content found for example '{example_id}' in {language}"
+            error_msg = f"No code content found for example '{example_id}' in {language}"
+            logger.error(error_msg)
+            await ctx.error(error_msg)
+            results[example_id] = error_msg
 
+    logger.debug(f"Finished reading {len(results)} code examples")
     return results
 
 @mcp.tool()

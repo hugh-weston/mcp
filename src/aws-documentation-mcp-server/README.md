@@ -30,9 +30,10 @@ Configure the MCP server in your MCP client configuration (e.g., for Amazon Q De
       "args": ["awslabs.aws-documentation-mcp-server@latest"],
       "env": {
         "FASTMCP_LOG_LEVEL": "ERROR",
+        "FASTMCP_LOG_FILE": "awslabs/aws-documentation-mcp-server/logs/server_aws.log",
         "AWS_DOCUMENTATION_PARTITION": "aws",
-        "EXAMPLE_METADATA_FILE": "example_meta.json",
-        "EXAMPLE_SNIPPETS_FILE": "example_meta_snippets.json"
+        "AWS_DOCUMENTATION_CODE_EXAMPLE_METADATA_FILE": "example_meta.json",
+        "AWS_DOCUMENTATION_CODE_EXAMPLE_SNIPPETS_FILE": "example_meta_snippets.json"
       },
       "disabled": false,
       "autoApprove": []
