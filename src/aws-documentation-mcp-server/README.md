@@ -30,7 +30,10 @@ Configure the MCP server in your MCP client configuration (e.g., for Amazon Q De
       "args": ["awslabs.aws-documentation-mcp-server@latest"],
       "env": {
         "FASTMCP_LOG_LEVEL": "ERROR",
-        "AWS_DOCUMENTATION_PARTITION": "aws"
+        "FASTMCP_LOG_FILE": "awslabs/aws-documentation-mcp-server/logs/server_aws.log",
+        "AWS_DOCUMENTATION_PARTITION": "aws",
+        "AWS_DOCUMENTATION_CODE_EXAMPLE_METADATA_FILE": "example_meta.json",
+        "AWS_DOCUMENTATION_CODE_EXAMPLE_SNIPPETS_FILE": "example_meta_snippets.json"
       },
       "disabled": false,
       "autoApprove": []
@@ -40,6 +43,7 @@ Configure the MCP server in your MCP client configuration (e.g., for Amazon Q De
 ```
 
 > **Note**: Set `AWS_DOCUMENTATION_PARTITION` to `aws-cn` to query AWS China documentation instead of global AWS documentation.
+> **Note**: For local development, create `.amazonq/mcp.json` file with `python` as command and path to `server.py` as arg.
 
 or docker after a successful `docker build -t mcp/aws-documentation .`:
 

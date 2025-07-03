@@ -27,8 +27,9 @@ DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.
 async def read_documentation_impl(
     ctx: Context,
     url_str: str,
-    max_length: int,
-    start_index: int,
+    max_length: int = 5000,
+    start_index: int = 0,
+    read_full: bool = False,
 ) -> str:
     """The implementation of the read_documentation tool."""
     logger.debug(f'Fetching documentation from {url_str}')
@@ -61,7 +62,10 @@ async def read_documentation_impl(
     else:
         content = page_raw
 
-    result = format_documentation_result(url_str, content, start_index, max_length)
+    if read_full:
+        result = format_documentation_result(url_str, content, 0, len(content))
+    else:
+        result = format_documentation_result(url_str, content, start_index, max_length)
 
     # Log if content was truncated
     if len(content) > start_index + max_length:

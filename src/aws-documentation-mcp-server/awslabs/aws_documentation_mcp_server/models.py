@@ -17,6 +17,14 @@ from pydantic import BaseModel
 from typing import Optional
 
 
+class CodeExampleResult(BaseModel):
+    """Code example result from AWS Docs SDK Examples Metadata."""
+
+    example_id: str
+    language: str
+    version: str
+    description: Optional[str] = None
+
 class SearchResult(BaseModel):
     """Search result from AWS documentation search."""
 
