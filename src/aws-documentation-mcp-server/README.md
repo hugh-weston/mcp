@@ -32,8 +32,13 @@ Configure the MCP server in your MCP client configuration (e.g., for Amazon Q De
         "FASTMCP_LOG_LEVEL": "ERROR",
         "FASTMCP_LOG_FILE": "awslabs/aws-documentation-mcp-server/logs/server_aws.log",
         "AWS_DOCUMENTATION_PARTITION": "aws",
-        "AWS_DOCUMENTATION_CODE_EXAMPLE_METADATA_FILE": "example_meta.json",
-        "AWS_DOCUMENTATION_CODE_EXAMPLE_SNIPPETS_FILE": "example_meta_snippets.json"
+        "CODE_EXAMPLES_S3_VECTOR_BUCKET": "name-of-s3-vector-bucket",
+        "CODE_EXAMPLES_S3_VECTOR_INDEX": "name-of-s3-vector-index",
+        "S3_VECTORS_REGION": "us-east-1",
+        "BEDROCK_TEXT_EMBEDDING_MODEL_ID": "text-embedding-id",
+        "BEDROCK_REGION": "us-east-1",
+        "SAGEMAKER_CODE_EMBEDDING_MODEL_ID": "code-embedding-id",
+        "SAGEMAKER_REGION": "us-east-1"
       },
       "disabled": false,
       "autoApprove": []

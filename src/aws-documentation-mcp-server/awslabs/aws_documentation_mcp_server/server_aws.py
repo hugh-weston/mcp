@@ -34,68 +34,30 @@ from awslabs.aws_documentation_mcp_server.util import (
     parse_recommendation_results,
 )
 from loguru import logger
+
 # from mcp.server.fastmcp import Context, FastMCP
 from fastmcp import Context, FastMCP
 from pathlib import Path
 from pydantic import Field
 from typing import Dict, List, Literal, Tuple, Union
 
+import boto3
+from constants import LanguageType, ServiceType
 
-SEARCH_API_URL = 'https://proxy.search.docs.aws.amazon.com/search'
-RECOMMENDATIONS_API_URL = 'https://contentrecs-api.docs.aws.amazon.com/v1/recommendations'
-CODE_EXAMPLES_GITHUB_URL = 'https://raw.githubusercontent.com/awsdocs/aws-doc-sdk-examples/refs/heads/main/'
+SEARCH_API_URL = "https://proxy.search.docs.aws.amazon.com/search"
+RECOMMENDATIONS_API_URL = "https://contentrecs-api.docs.aws.amazon.com/v1/recommendations"
+CODE_EXAMPLES_GITHUB_URL = "https://raw.githubusercontent.com/awsdocs/aws-doc-sdk-examples/refs/heads/main/"
 
-def snippet_loader(metadata_file: Path, snippets_file: Path) -> Tuple[Dict, Dict]:
-    metadata, snippets = {}, {}
-    try:
-        with open(metadata_file, 'r') as f:
-            metadata = json.load(f)
-        with open(snippets_file, 'r') as f:
-            snippets = json.load(f)
-        logger.info("Successfully loaded metadata files")
-    except Exception as e:
-        error_msg = f"Failed to load metadata files: {e}"
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
+CODE_EXAMPLES_S3_BUCKET = os.getenv("CODE_EXAMPLES_S3_VECTOR_BUCKET")
+CODE_EXAMPLES_S3_INDEX = os.getenv("CODE_EXAMPLES_S3_VECTOR_INDEX")
+TEXT_EMBEDDING_MODEL_ID = os.getenv("BEDROCK_TEXT_EMBEDDING_MODEL_ID")
+CODE_EMBEDDING_MODEL_ID = os.getenv("SAGEMAKER_CODE_EMBEDDING_MODEL_ID")
 
-    return metadata, snippets
-
-metadata_file = Path(os.getenv('AWS_DOCUMENTATION_CODE_EXAMPLE_METADATA_FILE', "example_meta.json"))
-snippets_file = Path(os.getenv('AWS_DOCUMENTATION_CODE_EXAMPLE_SNIPPETS_FILE', "example_meta_snippets.json"))
-
-EXAMPLE_METADATA, EXAMPLE_SNIPPETS = snippet_loader(metadata_file, snippets_file)
-
-# All unique AWS services with code examples
-ServiceType = Literal[
-    "accessanalyzer", "acm", "acm-pca", "alexa-for-business", "api-gateway", "apigatewaymanagementapi", "apigatewayv2", "application-auto-scaling", "app-mesh", 
-    "appconfig", "application-discovery-service", "apprunner", "appstream", "athena", "auditmanager", "aurora", "auto-scaling", "auto-scaling-plans", "backup", 
-    "batch", "bedrock", "bedrock-runtime", "bedrock-agent", "bedrock-agent-runtime", "budgets", "chime", "cloud9", "cloudcontrol", "cloudformation", "cloudfront", 
-    "cloudsearch-domain", "cloudtrail", "cloudwatch", "cloudwatch-events", "cloudwatch-logs", "codeartifact", "codebuild", "codecommit", "codedeploy", "codeguru-reviewer", 
-    "codepipeline", "codestar", "codestar-connections", "codestar-notifications", "cognito", "cognito-identity", "cognito-identity-provider", "cognito-sync", "comprehend", 
-    "comprehendmedical", "config-service", "connect", "cost-and-usage-report-service", "cost-explorer", "data-pipeline", "database-migration-service", "datasync", "dax", 
-    "detective", "device-farm", "direct-connect", "directory-service", "directory-service-data", "dlm", "docdb", "dynamodb", "dynamodb-streams", "ebs", "ec2", "ec2-instance-connect", 
-    "ecr", "ecr-public", "ecs", "efs", "eks", "elastic-beanstalk", "elastic-load-balancing", "elastic-load-balancing-v2", "elastic-transcoder", "elasticache", "elasticsearch-service", 
-    "emr", "emr-containers", "entityresolution", "eventbridge", "firehose", "forecast", "fis", "fms", "fsx", "gamelift", "geo-maps", "geo-places", "geo-routes", "glacier", 
-    "global-accelerator", "glue", "grafana", "greengrass", "greengrassv2", "guardduty", "health", "healthlake", "iam", "imagebuilder", "inspector", "inspector2", "iot", "iot-data-plane", 
-    "iot-events", "iot-events-data", "iot-jobs-data-plane", "iot-wireless", "iotanalytics", "iotdeviceadvisor", "iotfleetwise", "iotsitewise", "iotthingsgraph", "ivs", "ivs-realtime", 
-    "ivschat", "kafka", "keyspaces", "kendra", "kinesis", "kinesis-analytics-v2", "kms", "lakeformation", "lambda", "lex", "license-manager", "lightsail", "location", "lookoutvision", 
-    "machine-learning", "macie2", "marketplace", "marketplace-agreement", "marketplace-catalog", "mediaconnect", "mediaconvert", "medialive", "mediapackage", "mediapackage-vod", "mediastore", 
-    "mediastore-data", "mediatailor", "medical-imaging", "migration-hub", "memorydb", "neptune", "networkmanager", "networkmonitor", "networkflowmonitor", "nimble", "oam", "observabilityadmin", 
-    "omics", "opensearch", "opsworks", "opsworkscm", "organizations", "outposts", "partnercentral-selling", "payment-cryptography", "payment-cryptography-data", "personalize", 
-    "personalize-runtime", "personalize-events", "pi", "pinpoint", "pinpoint-email", "pinpoint-sms-voice", "pipes", "polly", "pricing", "proton", "qldb", "ram", "rds", "rds-data", "redshift", 
-    "rekognition", "resource-explorer-2", "resource-groups", "resource-groups-tagging-api", "robomaker", "route-53", "route-53-domains", "route53profiles", "route53-recovery-cluster", 
-    "route53resolver", "s3", "s3-control", "s3-directory-buckets", "sagemaker", "scheduler", "secrets-manager", "securityhub", "securitylake", "serverlessapplicationrepository", "service-catalog", 
-    "service-catalog-appregistry", "service-quotas", "servicediscovery", "ses", "sesv2", "sfn", "shield", "signer", "snowball", "sns", "sqs", "ssm", "ssm-contacts", "ssm-incidents", 
-    "storage-gateway", "sts", "support", "swf", "synthetics", "textract", "transcribe", "transcribe-streaming", "transcribe-medical", "translate", "trustedadvisor", "verifiedpermissions", 
-    "vpc-lattice", "waf", "waf-regional", "wafv2", "workdocs", "workmail", "workmailmessageflow", "workspaces", "xray"
-]
-
-LanguageType = Literal[
-    "any", ".NET", "Bash", "C++", "CLI", "Go", "IAMPolicyGrammar", "Java", "JavaScript", "Kotlin", "PHP", "PowerShell", "Python", "Ruby", "Rust", "SAP ABAP", "Swift"
-]
+bedrock = boto3.client("bedrock-runtime", region_name=os.getenv("BEDROCK_REGION"))
+s3vectors = boto3.client("s3vectors", region_name=os.getenv("S3_VECTORS_REGION"))
 
 mcp = FastMCP(
-    'awslabs.aws-documentation-mcp-server',
+    "awslabs.aws-documentation-mcp-server",
     instructions="""
     # AWS Documentation MCP Server
 
@@ -121,17 +83,26 @@ mcp = FastMCP(
     - Use `read_code_example` when: You have a specific code example name and need its content
     """,
     dependencies=[
-        'pydantic',
-        'httpx',
-        'beautifulsoup4',
+        "pydantic",
+        "httpx",
+        "beautifulsoup4",
     ],
 )
 
 @mcp.tool()
 async def search_code_examples(
     ctx: Context,
+    query: str = Field(description="Query to search the examples for"),
     service: ServiceType = Field(description="AWS service name to search examples for"),
-    language: LanguageType = Field(default="any", description="Programming language/SDK to filter examples by")
+    limit: int = Field(
+        default=5,
+        description="Maximum number of results to return",
+        ge=1,
+        le=50,
+    ),
+    language: LanguageType = Field(
+        default="any", description="Programming language/SDK to filter examples by"
+    ),
 ) -> List[CodeExampleResult]:
     """Searches for code examples in the aws-doc-sdk-examples repository using the provided metadata.
     Returns a list of examples that match the service and language criteria.
@@ -146,73 +117,83 @@ async def search_code_examples(
     Returns:
         List of code examples matching the service and language, along with their version and description (optional).
     """
-    logger.debug(f"Searching code examples for service: {service}, language: {language}")
+    logger.debug(
+        f"Searching code examples for service: {service}, language: {language}"
+    )
+
+    # differentiate between code search and semantic search
 
     try:
+        response = bedrock.invoke_model(
+            modelId=TEXT_EMBEDDING_MODEL_ID, body=json.dumps({"inputText": query})
+        )
+        model_response = json.loads(response["body"].read())
+        query_embedding = model_response["embedding"]
+
+        filter_conditions = [{"service": {"$eq": service}}]
+        if language != "any":
+            filter_conditions.append({"language": {"$eq": language}})
+
+        response = s3vectors.query_vectors(
+            vectorBucketName=CODE_EXAMPLES_S3_BUCKET,
+            indexName=CODE_EXAMPLES_S3_INDEX,
+            queryVector={"float32": query_embedding},
+            filter={"$and": filter_conditions},
+            topK=limit,
+            returnMetadata=True,
+            returnDistance=True,
+        )
+
+        # filter by version and category where applicable
+
         filtered_examples = []
-        for example_id, example_data in EXAMPLE_METADATA["examples"].items():
-            if example_id.startswith(service):
-                languages_data = example_data.get("languages", {})
+        for i, vector in enumerate(response["vectors"]):
+            filtered_examples.append(
+                CodeExampleResult(
+                    example_id=vector["metadata"]["example_name"],
+                    language=vector["metadata"]["language"],
+                    version=str(vector["metadata"]["version"]),
+                    service=vector["metadata"]["service"],
+                    description=vector["metadata"]["title"],
+                    snippet_tags=(
+                        vector["metadata"]["snippet_tags"]
+                        if vector["metadata"]["snippet_tags"] != "empty"
+                        else []
+                    ),
+                    snippet_files=(
+                        vector["metadata"]["snippet_files"]
+                        if vector["metadata"]["snippet_files"] != "empty"
+                        else []
+                    ),
+                )
+            )
 
-                if language == "any":
-                    target_languages = languages_data.keys()
-                else: 
-                    target_languages = [language] if language in languages_data else []
-
-                for lang in target_languages:
-                    lang_data = languages_data[lang]
-                    for version in lang_data.get("versions", []):
-                        descriptions = []
-                        for excerpt in version.get("excerpts", []):
-                            if excerpt.get("description"):
-                                descriptions.append(excerpt["description"])
-
-                        combined_description = " ".join(descriptions) if descriptions else None
-
-                        filtered_examples.append(
-                            CodeExampleResult(
-                                example_id=example_id,
-                                language=lang,
-                                version=str(version.get("sdk_version", "")),
-                                description=combined_description
-                            )
-                        )  
-        if not filtered_examples:
-            error_msg = f"No code examples found for service '{service}' in language '{language}'"
-            logger.error(error_msg)
-            await ctx.error(error_msg)
-            return [CodeExampleResult(
-                example_id="",
-                language="",
-                version="",
-                description=error_msg
-            )]
-
-        logger.debug(f"Found {len(filtered_examples)} examples")
         return filtered_examples
 
     except (KeyError, TypeError) as e:
         error_msg = f"Error accessing example metadata: {e}"
         logger.error(error_msg)
         await ctx.error(error_msg)
-        return [CodeExampleResult(
-            example_id="",
-            language="",
-            version="",
-            description=error_msg
-        )]
+        return [
+            CodeExampleResult(
+                example_id="", language="", version="", description=error_msg
+            )
+        ]
+
 
 @mcp.tool()
 async def read_code_example(
     ctx: Context,
     example_ids: Union[str, List[str]],
-    language: LanguageType = Field(description="Programming language/SDK of the example")
+    language: LanguageType = Field(
+        description="Programming language/SDK of the example"
+    ),
 ) -> Dict[str, str]:
     """Reads and returns the full file contents of one or more code examples.
 
     ## Usage
     After finding examples using search_code_examples, use this to read the actual code content.
-    Accepts either a single example_id or a list of example_ids. When providing multiple examples, 
+    Accepts either a single example_id or a list of example_ids. When providing multiple examples,
     they must all use the same programming language.
 
     Args:
@@ -251,43 +232,49 @@ async def read_code_example(
             example_data = EXAMPLE_METADATA["examples"][example_id]
 
             if language not in example_data["languages"]:
-                error_msg = f"Code example '{example_id}' is not available in {language}"
+                error_msg = (
+                    f"Code example '{example_id}' is not available in {language}"
+                )
                 logger.error(error_msg)
                 await ctx.error(error_msg)
                 results[example_id] = error_msg
                 continue
 
-            versions = example_data["languages"][language].get('versions', [])
+            versions = example_data["languages"][language].get("versions", [])
             snippet_tags = []
             for version in versions:
-                excerpts = version.get('excerpts', [])
+                excerpts = version.get("excerpts", [])
                 for excerpt in excerpts:
-                    tags = excerpt.get('snippet_tags', [])
+                    tags = excerpt.get("snippet_tags", [])
                     snippet_tags.extend(tags)
 
             if snippet_tags:
                 source_files = []
                 for snippet in snippet_tags:
-                    if snippet in EXAMPLE_SNIPPETS['snippets']:
-                        source_file = EXAMPLE_SNIPPETS['snippets'][snippet]["file"]
+                    if snippet in EXAMPLE_SNIPPETS["snippets"]:
+                        source_file = EXAMPLE_SNIPPETS["snippets"][snippet]["file"]
                         source_files.append(source_file)
 
                 if source_files:
                     example_content = []
                     for file in source_files:
-                        f = file.split('/aws-doc-sdk-examples/')[-1]
+                        f = file.split("/aws-doc-sdk-examples/")[-1]
                         full_file_path = f"{CODE_EXAMPLES_GITHUB_URL}/{f}"
 
-                        content = await read_documentation_impl(ctx, full_file_path, read_full=True)
+                        content = await read_documentation_impl(
+                            ctx, full_file_path, read_full=True
+                        )
                         example_content.append(content)
-                    
+
                     results[example_id] = "\n\n".join(example_content)
                     continue
-                
+
             results[example_id] = "No code content found."
 
         except (AttributeError, TypeError):
-            error_msg = f"No code content found for example '{example_id}' in {language}"
+            error_msg = (
+                f"No code content found for example '{example_id}' in {language}"
+            )
             logger.error(error_msg)
             await ctx.error(error_msg)
             results[example_id] = error_msg
@@ -295,19 +282,20 @@ async def read_code_example(
     logger.debug(f"Finished reading {len(results)} code examples")
     return results
 
+
 @mcp.tool()
 async def read_documentation(
     ctx: Context,
-    url: str = Field(description='URL of the AWS documentation page to read'),
+    url: str = Field(description="URL of the AWS documentation page to read"),
     max_length: int = Field(
         default=5000,
-        description='Maximum number of characters to return.',
+        description="Maximum number of characters to return.",
         gt=0,
         lt=1000000,
     ),
     start_index: int = Field(
         default=0,
-        description='On return output starting at this character index, useful if a previous fetch was truncated and more content is required.',
+        description="On return output starting at this character index, useful if a previous fetch was truncated and more content is required.",
         ge=0,
     ),
 ) -> str:
@@ -354,23 +342,27 @@ async def read_documentation(
     """
     # Validate that URL is from docs.aws.amazon.com and ends with .html
     url_str = str(url)
-    if not re.match(r'^https?://docs\.aws\.amazon\.com/', url_str):
-        await ctx.error(f'Invalid URL: {url_str}. URL must be from the docs.aws.amazon.com domain')
-        raise ValueError('URL must be from the docs.aws.amazon.com domain')
-    if not url_str.endswith('.html'):
-        await ctx.error(f'Invalid URL: {url_str}. URL must end with .html')
-        raise ValueError('URL must end with .html')
+    if not re.match(r"^https?://docs\.aws\.amazon\.com/", url_str):
+        await ctx.error(
+            f"Invalid URL: {url_str}. URL must be from the docs.aws.amazon.com domain"
+        )
+        raise ValueError("URL must be from the docs.aws.amazon.com domain")
+    if not url_str.endswith(".html"):
+        await ctx.error(f"Invalid URL: {url_str}. URL must end with .html")
+        raise ValueError("URL must end with .html")
 
-    return await read_documentation_impl(ctx, url_str, max_length=max_length, start_index=start_index)
+    return await read_documentation_impl(
+        ctx, url_str, max_length=max_length, start_index=start_index
+    )
 
 
 @mcp.tool()
 async def search_documentation(
     ctx: Context,
-    search_phrase: str = Field(description='Search phrase to use'),
+    search_phrase: str = Field(description="Search phrase to use"),
     limit: int = Field(
         default=10,
-        description='Maximum number of results to return',
+        description="Maximum number of results to return",
         ge=1,
         le=50,
     ),
@@ -405,15 +397,15 @@ async def search_documentation(
     Returns:
         List of search results with URLs, titles, and context snippets
     """
-    logger.debug(f'Searching AWS documentation for: {search_phrase}')
+    logger.debug(f"Searching AWS documentation for: {search_phrase}")
 
     request_body = {
-        'textQuery': {
-            'input': search_phrase,
+        "textQuery": {
+            "input": search_phrase,
         },
-        'contextAttributes': [{'key': 'domain', 'value': 'docs.aws.amazon.com'}],
-        'acceptSuggestionBody': 'RawText',
-        'locales': ['en_us'],
+        "contextAttributes": [{"key": "domain", "value": "docs.aws.amazon.com"}],
+        "acceptSuggestionBody": "RawText",
+        "locales": ["en_us"],
     }
 
     async with httpx.AsyncClient() as client:
@@ -422,25 +414,25 @@ async def search_documentation(
                 SEARCH_API_URL,
                 json=request_body,
                 headers={
-                    'Content-Type': 'application/json',
-                    'User-Agent': DEFAULT_USER_AGENT,
+                    "Content-Type": "application/json",
+                    "User-Agent": DEFAULT_USER_AGENT,
                 },
                 timeout=30,
             )
         except httpx.HTTPError as e:
-            error_msg = f'Error searching AWS docs: {str(e)}'
+            error_msg = f"Error searching AWS docs: {str(e)}"
             logger.error(error_msg)
             await ctx.error(error_msg)
-            return [SearchResult(rank_order=1, url='', title=error_msg, context=None)]
+            return [SearchResult(rank_order=1, url="", title=error_msg, context=None)]
 
         if response.status_code >= 400:
-            error_msg = f'Error searching AWS docs - status code {response.status_code}'
+            error_msg = f"Error searching AWS docs - status code {response.status_code}"
             logger.error(error_msg)
             await ctx.error(error_msg)
             return [
                 SearchResult(
                     rank_order=1,
-                    url='',
+                    url="",
                     title=error_msg,
                     context=None,
                 )
@@ -449,48 +441,50 @@ async def search_documentation(
         try:
             data = response.json()
         except json.JSONDecodeError as e:
-            error_msg = f'Error parsing search results: {str(e)}'
+            error_msg = f"Error parsing search results: {str(e)}"
             logger.error(error_msg)
             await ctx.error(error_msg)
             return [
                 SearchResult(
                     rank_order=1,
-                    url='',
+                    url="",
                     title=error_msg,
                     context=None,
                 )
             ]
 
     results = []
-    if 'suggestions' in data:
-        for i, suggestion in enumerate(data['suggestions'][:limit]):
-            if 'textExcerptSuggestion' in suggestion:
-                text_suggestion = suggestion['textExcerptSuggestion']
+    if "suggestions" in data:
+        for i, suggestion in enumerate(data["suggestions"][:limit]):
+            if "textExcerptSuggestion" in suggestion:
+                text_suggestion = suggestion["textExcerptSuggestion"]
                 context = None
 
                 # Add context if available
-                if 'summary' in text_suggestion:
-                    context = text_suggestion['summary']
-                elif 'suggestionBody' in text_suggestion:
-                    context = text_suggestion['suggestionBody']
+                if "summary" in text_suggestion:
+                    context = text_suggestion["summary"]
+                elif "suggestionBody" in text_suggestion:
+                    context = text_suggestion["suggestionBody"]
 
                 results.append(
                     SearchResult(
                         rank_order=i + 1,
-                        url=text_suggestion.get('link', ''),
-                        title=text_suggestion.get('title', ''),
+                        url=text_suggestion.get("link", ""),
+                        title=text_suggestion.get("title", ""),
                         context=context,
                     )
                 )
 
-    logger.debug(f'Found {len(results)} search results for: {search_phrase}')
+    logger.debug(f"Found {len(results)} search results for: {search_phrase}")
     return results
 
 
 @mcp.tool()
 async def recommend(
     ctx: Context,
-    url: str = Field(description='URL of the AWS documentation page to get recommendations for'),
+    url: str = Field(
+        description="URL of the AWS documentation page to get recommendations for"
+    ),
 ) -> List[RecommendationResult]:
     """Get content recommendations for an AWS documentation page.
 
@@ -538,30 +532,32 @@ async def recommend(
         List of recommended pages with URLs, titles, and context
     """
     url_str = str(url)
-    logger.debug(f'Getting recommendations for: {url_str}')
+    logger.debug(f"Getting recommendations for: {url_str}")
 
-    recommendation_url = f'{RECOMMENDATIONS_API_URL}?path={url_str}'
+    recommendation_url = f"{RECOMMENDATIONS_API_URL}?path={url_str}"
 
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
                 recommendation_url,
-                headers={'User-Agent': DEFAULT_USER_AGENT},
+                headers={"User-Agent": DEFAULT_USER_AGENT},
                 timeout=30,
             )
         except httpx.HTTPError as e:
-            error_msg = f'Error getting recommendations: {str(e)}'
+            error_msg = f"Error getting recommendations: {str(e)}"
             logger.error(error_msg)
             await ctx.error(error_msg)
-            return [RecommendationResult(url='', title=error_msg, context=None)]
+            return [RecommendationResult(url="", title=error_msg, context=None)]
 
         if response.status_code >= 400:
-            error_msg = f'Error getting recommendations - status code {response.status_code}'
+            error_msg = (
+                f"Error getting recommendations - status code {response.status_code}"
+            )
             logger.error(error_msg)
             await ctx.error(error_msg)
             return [
                 RecommendationResult(
-                    url='',
+                    url="",
                     title=error_msg,
                     context=None,
                 )
@@ -570,24 +566,24 @@ async def recommend(
         try:
             data = response.json()
         except json.JSONDecodeError as e:
-            error_msg = f'Error parsing recommendations: {str(e)}'
+            error_msg = f"Error parsing recommendations: {str(e)}"
             logger.error(error_msg)
             await ctx.error(error_msg)
-            return [RecommendationResult(url='', title=error_msg, context=None)]
+            return [RecommendationResult(url="", title=error_msg, context=None)]
 
     results = parse_recommendation_results(data)
-    logger.debug(f'Found {len(results)} recommendations for: {url_str}')
+    logger.debug(f"Found {len(results)} recommendations for: {url_str}")
     return results
 
 
 def main():
     """Run the MCP server with CLI argument support."""
     # Log startup information
-    logger.info('Starting AWS Documentation MCP Server')
+    logger.info("Starting AWS Documentation MCP Server")
 
     # Run server with appropriate transport
     mcp.run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
