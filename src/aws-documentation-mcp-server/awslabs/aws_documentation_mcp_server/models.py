@@ -14,16 +14,19 @@
 """Data models for AWS Documentation MCP Server."""
 
 from pydantic import BaseModel
-from typing import Optional
-
+from typing import Optional, List
+from constants import LanguageType, ServiceType
 
 class CodeExampleResult(BaseModel):
     """Code example result from AWS Docs SDK Examples Metadata."""
 
     example_id: str
-    language: str
+    language: LanguageType
+    service: ServiceType
     version: str
     description: Optional[str] = None
+    snippet_tags: Optional[list[str]] = None 
+    snippet_files: Optional[List[str]] = None
 
 class SearchResult(BaseModel):
     """Search result from AWS documentation search."""
