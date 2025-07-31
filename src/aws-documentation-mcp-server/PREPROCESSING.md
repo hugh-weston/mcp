@@ -121,6 +121,7 @@ The scripts expect JSON input with the following structure:
     },
     "title": "Example Title",
     "synopsis": "Example synopsis",
+    "category": "category_id",
     "service_sdk_id": "SERVICE"
   }
 }
@@ -137,6 +138,7 @@ The scripts produce an array of language-specific examples:
     "language": "LanguageName", 
     "version": 1,
     "service": "SERVICE",
+    "category": "category_id",
     "snippet_tags": ["tag1", "tag2"],
     "snippet_files": ["file1.ext"],
     "github": "path/to/github",

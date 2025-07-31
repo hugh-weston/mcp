@@ -131,6 +131,7 @@ def process_batch(batch):
                 "language": code_example['language'],
                 "version": code_example['version'],
                 "service": code_example['service'],
+                "category": code_example['category'],
                 "snippet_tags": code_example['snippet_tags'] if code_example['snippet_tags'] else "empty",
                 "snippet_files": code_example['snippet_files'] if code_example['snippet_files'] else "empty",
                 "github": code_example['github'] if code_example['github'] else "empty",

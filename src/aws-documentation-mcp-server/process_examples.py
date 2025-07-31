@@ -199,7 +199,8 @@ def extract_language_examples(
                 "snippet_files": snippet_files,
                 "github": version_data.get("github"),
                 "title": clean_title,
-                "description": " ".join(filter(None, descriptions))
+                "description": " ".join(filter(None, descriptions)),
+                "category": example_data.get("category")
             }
             
             language_examples.append(language_example)

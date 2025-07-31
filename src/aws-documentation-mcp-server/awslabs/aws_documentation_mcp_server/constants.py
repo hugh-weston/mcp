@@ -2,7 +2,6 @@ from typing import Literal
 
 # Available SDKs containing code examples
 LanguageType = Literal[
-    "any",
     ".NET",
     "Bash",
     "C++",
@@ -23,7 +22,7 @@ LanguageType = Literal[
 
 # All unique AWS services with code examples
 # Found from unique service_sdk_id in example_meta.json
-ServiceType = [
+ServiceType = Literal[
     "ACM",
     "ACM PCA",
     "API Gateway",
@@ -250,3 +249,34 @@ ServiceType = [
     "signer",
     "synthetics",
 ]
+
+# Main categories of examples (excluding mislabeled)
+CategoryType = Literal[
+    "Api",
+    "IAMPolicy",
+    "Scenarios",
+    "Hello",
+    "Basics",
+]
+
+# SDK version validation mapping (language -> sdk versions)
+LANGUAGE_VERSIONS = {
+    ".NET": [3],
+    "Bash": [2],
+    "C++": [1],
+    "CLI": [2],
+    "Go": [2],
+    "IAMPolicyGrammar": [1],
+    "Java": [1, 2],
+    "JavaScript": [2, 3],
+    "Kotlin": [1],
+    "PHP": [3],
+    "PowerShell": [4],
+    "Python": [3],
+    "Ruby": [3],
+    "Rust": [1],
+    "SAP ABAP": [1],
+    "Swift": [1]}
+
+# Type for version validation (derived from supported versions)
+VersionType = Literal[1, 2, 3, 4]

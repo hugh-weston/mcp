@@ -42,7 +42,7 @@ from pydantic import Field
 from typing import Dict, List, Literal, Tuple, Union
 
 import boto3
-from constants import LanguageType, ServiceType
+from constants import LanguageType, ServiceType, CategoryType, VersionType, LANGUAGE_VERSIONS
 
 SEARCH_API_URL = "https://proxy.search.docs.aws.amazon.com/search"
 RECOMMENDATIONS_API_URL = "https://contentrecs-api.docs.aws.amazon.com/v1/recommendations"
@@ -93,52 +93,84 @@ mcp = FastMCP(
 async def search_code_examples(
     ctx: Context,
     query: str = Field(description="Query to search the examples for"),
-    service: ServiceType = Field(description="AWS service name to search examples for"),
     limit: int = Field(
         default=5,
         description="Maximum number of results to return",
         ge=1,
         le=50,
     ),
-    language: LanguageType = Field(
-        default="any", description="Programming language/SDK to filter examples by"
+    language: Optional[LanguageType] = Field(
+        default=None, description="Programming language/SDK to filter examples by. If None, searches all languages."
     ),
+    service: Optional[ServiceType] = Field(
+        default=None, description="AWS service name to search examples for. If None, searches all services."
+    ),
+    version: Optional[VersionType] = Field(
+        default=None, 
+        description="SDK version to filter by. If None, searches all versions. Only use this filter if explicitly requested."
+    ),
+    category: Optional[CategoryType] = Field(
+        default=None, description="Example category to filter by. If None, searches all categories. Only use this filter if explicitly requested."
+    )
 ) -> List[CodeExampleResult]:
     """Searches for code examples in the aws-doc-sdk-examples repository using the provided metadata.
-    Returns a list of examples that match the service and language criteria.
+    Returns a list of examples that match the search criteria.
 
     ## Usage
-    Use this tool to get a list of the available code examples for a specific AWS service and programming language.
+    Use this tool to get a list of the available code examples based on search criteria.
+    You can optionally filter by service, language, and/or category.
 
     Args:
         ctx: MCP context for logging and error handling
-        service: the service being used
-        language: the language being used
+        query: Text to search for in the examples
+        service: Optional AWS service to filter by
+        limit: Maximum number of results to return
+        language: Optional programming language to filter by
+        version: Optional version to filter by
+        category: Optional category to filter by
     Returns:
-        List of code examples matching the service and language, along with their version and description (optional).
+        List of code examples matching the criteria, along with their metadata.
     """
     logger.debug(
-        f"Searching code examples for service: {service}, language: {language}"
+        f"Searching code examples with query: {query}, service: {service}, "
+        f"language: {language}, category: {category}"
     )
 
     # differentiate between code search and semantic search
 
     try:
         response = bedrock.invoke_model(
-            modelId=TEXT_EMBEDDING_MODEL_ID, body=json.dumps({"inputText": query})
+            modelId=TEXT_EMBEDDING_MODEL_ID, 
+            body=json.dumps({"inputText": query})
         )
         model_response = json.loads(response["body"].read())
         query_embedding = model_response["embedding"]
 
-        filter_conditions = [{"service": {"$eq": service}}]
-        if language != "any":
+        # Validate version if specified with language
+        if version is not None and language is not None and version not in LANGUAGE_VERSIONS[language]:
+            warning_msg = f"Version {version} not available for {language}, skipping version filter"
+            logger.warning(warning_msg)
+            await ctx.error(warning_msg)
+            version = None
+
+        # Build filter conditions
+        filter_conditions = []
+        if service is not None:
+            filter_conditions.append({"service": {"$eq": service}})
+        if language is not None:
             filter_conditions.append({"language": {"$eq": language}})
+        if version is not None:
+            filter_conditions.append({"version": {"$eq": version}})
+        if category is not None:
+            filter_conditions.append({"category": {"$eq": category}})
+
+        filter_query = {"$and": filter_conditions} if filter_conditions else {}
 
         response = s3vectors.query_vectors(
             vectorBucketName=CODE_EXAMPLES_S3_BUCKET,
             indexName=CODE_EXAMPLES_S3_INDEX,
             queryVector={"float32": query_embedding},
-            filter={"$and": filter_conditions},
+            filter={"$and": filter_query},
             topK=limit,
             returnMetadata=True,
             returnDistance=True,
@@ -152,7 +184,7 @@ async def search_code_examples(
                 CodeExampleResult(
                     example_id=vector["metadata"]["example_name"],
                     language=vector["metadata"]["language"],
-                    version=str(vector["metadata"]["version"]),
+                    version=vector["metadata"]["version"],
                     service=vector["metadata"]["service"],
                     description=vector["metadata"]["title"],
                     snippet_tags=(
@@ -165,6 +197,7 @@ async def search_code_examples(
                         if vector["metadata"]["snippet_files"] != "empty"
                         else []
                     ),
+                    category=vector["metadata"]["category"],
                 )
             )
 
@@ -176,10 +209,14 @@ async def search_code_examples(
         await ctx.error(error_msg)
         return [
             CodeExampleResult(
-                example_id="", language="", version="", description=error_msg
+                example_id="", 
+                language="", 
+                version="", 
+                description=error_msg,
+                service="",
+                category="",
             )
         ]
-
 
 @mcp.tool()
 async def read_code_example(

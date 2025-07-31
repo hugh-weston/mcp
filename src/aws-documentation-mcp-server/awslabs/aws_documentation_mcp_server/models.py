@@ -15,7 +15,7 @@
 
 from pydantic import BaseModel
 from typing import Optional, List
-from constants import LanguageType, ServiceType
+from constants import LanguageType, ServiceType, CategoryType, VersionType
 
 class CodeExampleResult(BaseModel):
     """Code example result from AWS Docs SDK Examples Metadata."""
@@ -23,7 +23,8 @@ class CodeExampleResult(BaseModel):
     example_id: str
     language: LanguageType
     service: ServiceType
-    version: str
+    version: VersionType
+    category: Optional[CategoryType] = None
     description: Optional[str] = None
     snippet_tags: Optional[list[str]] = None 
     snippet_files: Optional[List[str]] = None
