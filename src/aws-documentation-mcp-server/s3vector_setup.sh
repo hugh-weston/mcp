@@ -35,6 +35,7 @@ METADATA_FILE=""
 # - title: string - Human-readable title of the example
 # - description: string - Brief description of what the example does
 # - vector_input: string - Combined text used for embedding generation
+# - code: string - Full example code
 
 echo -e "\n\033[1;36m=== Code Example S3 Vector Endpoints Setup ===\033[0m\n"
 echo -e "\033[1;33mStep 1: Creating example vector bucket\033[0m"
@@ -63,7 +64,8 @@ aws s3vectors create-index \
     --dimension $DIMENSION \
     --distance-metric "cosine" \
     --data-type "float32" \
-    --region $REGION
+    --region $REGION \
+    --metadata-configuration '{"nonFilterableMetadataKeys":["description","code"]}'
 
 echo -e "\033[1;32mVector index '$VECTOR_INDEX_NAME' created successfully!\033[0m"
 pause
@@ -88,6 +90,7 @@ s3vectors = boto3.client('s3vectors', region_name=sys.argv[1])
 model_id = '${BEDROCK_MODEL_ID}'
 
 # Constants
+MAX_TEXT_INPUT = 30000
 BATCH_SIZE = 10
 MAX_RETRIES = 3
 VECTOR_BUCKET_NAME = '${VECTOR_BUCKET_NAME}'
@@ -121,13 +124,16 @@ def process_batch(batch):
     vectors = []
     for code_example in batch:
         text = f"{code_example['vector_input']}"
-        embedding = generate_embedding(text)
+
+        truncated_text = text[:MAX_TEXT_INPUT]
+        embedding = generate_embedding(truncated_text)
+
+        code = code_example['code'][:MAX_TEXT_INPUT]
 
         vector = {
             "key": f"{code_example['example_name']}.{code_example['language']}.{code_example['version']}",
             "data": {"float32": embedding},
             "metadata": {
-                "example_name": code_example['example_name'],
                 "language": code_example['language'],
                 "version": code_example['version'],
                 "service": code_example['service'],
@@ -135,7 +141,9 @@ def process_batch(batch):
                 "snippet_tags": code_example['snippet_tags'] if code_example['snippet_tags'] else "empty",
                 "snippet_files": code_example['snippet_files'] if code_example['snippet_files'] else "empty",
                 "github": code_example['github'] if code_example['github'] else "empty",
-                "title": code_example['title']
+                "title": code_example['title'],
+                "description": code_example['description'] if code_example['description'] else "empty",
+                "code": code
             }
         }
         vectors.append(vector)

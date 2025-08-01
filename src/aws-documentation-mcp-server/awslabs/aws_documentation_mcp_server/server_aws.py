@@ -39,7 +39,7 @@ from loguru import logger
 from fastmcp import Context, FastMCP
 from pathlib import Path
 from pydantic import Field
-from typing import Dict, List, Literal, Tuple, Union
+from typing import Dict, List, Literal, Tuple, Union, Optional
 
 import boto3
 from constants import LanguageType, ServiceType, CategoryType, VersionType, LANGUAGE_VERSIONS
@@ -170,7 +170,7 @@ async def search_code_examples(
             vectorBucketName=CODE_EXAMPLES_S3_BUCKET,
             indexName=CODE_EXAMPLES_S3_INDEX,
             queryVector={"float32": query_embedding},
-            filter={"$and": filter_query},
+            filter=filter_query,
             topK=limit,
             returnMetadata=True,
             returnDistance=True,
@@ -182,7 +182,7 @@ async def search_code_examples(
         for i, vector in enumerate(response["vectors"]):
             filtered_examples.append(
                 CodeExampleResult(
-                    example_id=vector["metadata"]["example_name"],
+                    example_id=vector["key"],
                     language=vector["metadata"]["language"],
                     version=vector["metadata"]["version"],
                     service=vector["metadata"]["service"],
@@ -221,11 +221,13 @@ async def search_code_examples(
 @mcp.tool()
 async def read_code_example(
     ctx: Context,
-    example_ids: Union[str, List[str]],
-    language: LanguageType = Field(
-        description="Programming language/SDK of the example"
-    ),
-) -> Dict[str, str]:
+    example_id: str = Field(description="The relevant example ID provided from search_code_examples."),
+    from_github: bool = Field(
+        default=False, 
+        description="Whether to read the full code example directly from the GitHub repository. \
+        Only set as True when the code example description explicitly states to use GitHub."
+        )
+) -> str:
     """Reads and returns the full file contents of one or more code examples.
 
     ## Usage
@@ -240,84 +242,42 @@ async def read_code_example(
     Returns:
         Dictionary mapping example_ids to their code content
     """
-    logger.debug(f"Reading code examples: {example_ids} in language: {language}")
-
-    if isinstance(example_ids, str):
-        example_ids = [example_ids]
-
-    if not example_ids:
-        error_msg = "No example IDs provided."
+    if not example_id:
+        error_msg = "No example ID provided."
+        logger.error(error_msg)
         await ctx.error(error_msg)
         return {"error": error_msg}
 
-    if language == "any":
-        error_msg = "Please specify a specific language to read code examples."
+    logger.debug(f"Reading code example {example_id}")
+
+    try:
+        response = s3vectors.get_vectors(
+            vectorBucketName=CODE_EXAMPLES_S3_BUCKET,
+            indexName=CODE_EXAMPLES_S3_INDEX,
+            keys=[example_id],
+            returnMetadata=True
+        )
+        
+        if not response or 'vectors' not in response or not response['vectors']:
+            error_msg = f"No data found for example ID: {example_id}"
+            logger.error(error_msg)
+            await ctx.error(error_msg)
+            return {"error": error_msg}
+
+        if 'metadata' not in response['vectors'][0] or 'code' not in response['vectors'][0]['metadata']:
+            error_msg = f"No code content found for example ID: {example_id}"
+            logger.error(error_msg)
+            await ctx.error(error_msg)
+            return {"error": error_msg}
+
+        logger.debug(f"Found code from example ID {example_id}")
+        return response['vectors'][0]['metadata']['code']
+
+    except Exception as e:
+        error_msg = f"Error reading code example {example_id}: {str(e)}"
+        logger.error(error_msg)
         await ctx.error(error_msg)
-        return {"error": error_msg}
-
-    results = {}
-
-    for example_id in example_ids:
-        if example_id not in EXAMPLE_METADATA["examples"]:
-            error_msg = f"Example '{example_id}' not found."
-            logger.error(error_msg)
-            await ctx.error(error_msg)
-            results[example_id] = error_msg
-            continue
-
-        try:
-            example_data = EXAMPLE_METADATA["examples"][example_id]
-
-            if language not in example_data["languages"]:
-                error_msg = (
-                    f"Code example '{example_id}' is not available in {language}"
-                )
-                logger.error(error_msg)
-                await ctx.error(error_msg)
-                results[example_id] = error_msg
-                continue
-
-            versions = example_data["languages"][language].get("versions", [])
-            snippet_tags = []
-            for version in versions:
-                excerpts = version.get("excerpts", [])
-                for excerpt in excerpts:
-                    tags = excerpt.get("snippet_tags", [])
-                    snippet_tags.extend(tags)
-
-            if snippet_tags:
-                source_files = []
-                for snippet in snippet_tags:
-                    if snippet in EXAMPLE_SNIPPETS["snippets"]:
-                        source_file = EXAMPLE_SNIPPETS["snippets"][snippet]["file"]
-                        source_files.append(source_file)
-
-                if source_files:
-                    example_content = []
-                    for file in source_files:
-                        f = file.split("/aws-doc-sdk-examples/")[-1]
-                        full_file_path = f"{CODE_EXAMPLES_GITHUB_URL}/{f}"
-
-                        content = await read_documentation_impl(
-                            ctx, full_file_path, read_full=True
-                        )
-                        example_content.append(content)
-
-                    results[example_id] = "\n\n".join(example_content)
-                    continue
-
-            results[example_id] = "No code content found."
-
-        except (AttributeError, TypeError):
-            error_msg = (
-                f"No code content found for example '{example_id}' in {language}"
-            )
-            logger.error(error_msg)
-            await ctx.error(error_msg)
-            results[example_id] = error_msg
-
-    logger.debug(f"Finished reading {len(results)} code examples")
-    return results
+        return {"error": error_msg}     
 
 
 @mcp.tool()
