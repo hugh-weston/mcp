@@ -35,6 +35,7 @@ aws s3 cp batch_input.jsonl s3://your-bucket/batch-input/
 
 # 3. Create Bedrock batch job (for Claude 3 Haiku, use "anthropic.claude-3-haiku-20240307-v1:0")
 aws bedrock create-model-invocation-job \
+    --region "us-east-1" \
     --job-name "description-generation" \
     --role-arn "arn:aws:iam::account:role/BedrockBatchRole" \
     --model-id "anthropic.claude-3-5-haiku-20241022-v1:0" \

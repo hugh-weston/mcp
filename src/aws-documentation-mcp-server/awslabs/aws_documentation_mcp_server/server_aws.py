@@ -42,7 +42,7 @@ from pydantic import Field
 from typing import Dict, List, Literal, Tuple, Union, Optional
 
 import boto3
-from constants import LanguageType, ServiceType, CategoryType, VersionType, LANGUAGE_VERSIONS
+from awslabs.aws_documentation_mcp_server.constants import LanguageType, ServiceType, CategoryType, VersionType, LANGUAGE_VERSIONS
 
 SEARCH_API_URL = "https://proxy.search.docs.aws.amazon.com/search"
 RECOMMENDATIONS_API_URL = "https://contentrecs-api.docs.aws.amazon.com/v1/recommendations"
@@ -86,6 +86,7 @@ mcp = FastMCP(
         "pydantic",
         "httpx",
         "beautifulsoup4",
+        "boto3",
     ],
 )
 
@@ -176,8 +177,6 @@ async def search_code_examples(
             returnDistance=True,
         )
 
-        # filter by version and category where applicable
-
         filtered_examples = []
         for i, vector in enumerate(response["vectors"]):
             filtered_examples.append(
@@ -186,7 +185,7 @@ async def search_code_examples(
                     language=vector["metadata"]["language"],
                     version=vector["metadata"]["version"],
                     service=vector["metadata"]["service"],
-                    description=vector["metadata"]["title"],
+                    description=vector["metadata"]["description"],
                     snippet_tags=(
                         vector["metadata"]["snippet_tags"]
                         if vector["metadata"]["snippet_tags"] != "empty"
@@ -209,12 +208,8 @@ async def search_code_examples(
         await ctx.error(error_msg)
         return [
             CodeExampleResult(
-                example_id="", 
-                language="", 
-                version="", 
-                description=error_msg,
-                service="",
-                category="",
+                example_id="error",
+                description=error_msg
             )
         ]
 

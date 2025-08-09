@@ -30,6 +30,20 @@ def build_snippet_index(snippets_data: Dict[str, Any]) -> Dict[str, str]:
     return index
 
 
+def build_file_to_code_index(snippets_data: Dict[str, Any]) -> Dict[str, str]:
+    """Build an index mapping file paths to code."""
+    index = {}
+    snippets_section = snippets_data.get("snippets", {})
+    
+    for snippet_key, snippet_value in snippets_section.items():
+        if isinstance(snippet_value, dict) and "code" in snippet_value and "file" in snippet_value:
+            file_path = snippet_value["file"]
+            code = snippet_value["code"]
+            index[file_path] = code
+    
+    return index
+
+
 def find_snippet_code(snippet_index: Dict[str, str], snippet_identifier: str) -> Optional[str]:
     """
     Find code for a snippet tag or snippet file in the index.
@@ -44,13 +58,14 @@ def find_snippet_code(snippet_index: Dict[str, str], snippet_identifier: str) ->
     return snippet_index.get(snippet_identifier)
 
 
-def get_combined_code(example: Dict[str, Any], snippet_index: Dict[str, str]) -> tuple[str, List[str]]:
+def get_combined_code(example: Dict[str, Any], snippet_index: Dict[str, str], file_to_code_index: Dict[str, str]) -> tuple[str, List[str]]:
     """
     Get combined code from all snippets for an example.
     
     Args:
         example: Single example dictionary from split metadata
-        snippets_data: The loaded snippets JSON data
+        snippet_index: The indexed snippets data (by identifier)
+        file_to_code_index: The indexed snippets data (by file path)
         
     Returns:
         Tuple of (combined code string, list of missing snippet identifiers)
@@ -70,7 +85,8 @@ def get_combined_code(example: Dict[str, Any], snippet_index: Dict[str, str]) ->
     # Process snippet_files
     for file_path in example.get("snippet_files", []):
         if file_path:  # Skip empty file paths
-            code = find_snippet_code(snippet_index, file_path)
+            # Use the file-to-code index for file lookups
+            code = file_to_code_index.get(file_path)
             if code:
                 code_parts.append(code)
             else:
@@ -212,6 +228,7 @@ def process_example(
     example_id: str,
     example_data: Dict[str, Any],
     snippet_index: Dict[str, str],
+    file_to_code_index: Dict[str, str],
     settings: Dict[str, Any]
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Process a single example."""
@@ -238,7 +255,7 @@ def process_example(
     missing_snippets = []
     for example in language_examples:
         # Get code and track missing snippets
-        code, missing = get_combined_code(example, snippet_index)
+        code, missing = get_combined_code(example, snippet_index, file_to_code_index)
         example["code"] = code
         example["vector_input"] = create_vector_input(example, code)
         missing_snippets.extend(missing)
@@ -284,6 +301,9 @@ def process_metadata_file(
         print("Building snippet index...")
         snippet_index = build_snippet_index(snippets_data)
         
+        print("Building file-to-code index...")
+        file_to_code_index = build_file_to_code_index(snippets_data)
+        
         # Settings dictionary
         settings = {
             "language_filter": language_filter,
@@ -309,6 +329,7 @@ def process_metadata_file(
                     example_id,
                     example_data,
                     snippet_index,
+                    file_to_code_index,
                     settings
                 )
                 
@@ -397,6 +418,10 @@ Examples:
     parser.add_argument("input_file", help="Input JSON file with metadata")
     parser.add_argument("snippets_file", help="Path to example_meta_snippets.json file")
     parser.add_argument("output_file", help="Output JSON file for split examples")
+    parser.add_argument(
+        "--combined-folder", "-c",
+        help="Path to combined snippet files folder for missing files"
+    )
     parser.add_argument(
         "--languages", "-l", 
         nargs="+", 

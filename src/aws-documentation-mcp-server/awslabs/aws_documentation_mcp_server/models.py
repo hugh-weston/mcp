@@ -15,18 +15,18 @@
 
 from pydantic import BaseModel
 from typing import Optional, List
-from constants import LanguageType, ServiceType, CategoryType, VersionType
+from awslabs.aws_documentation_mcp_server.constants import LanguageType, ServiceType, CategoryType, VersionType
 
 class CodeExampleResult(BaseModel):
     """Code example result from AWS Docs SDK Examples Metadata."""
 
     example_id: str
-    language: LanguageType
-    service: ServiceType
-    version: VersionType
+    language: Optional[LanguageType] = None
+    service: Optional[ServiceType] = None
+    version: Optional[VersionType] = None
     category: Optional[CategoryType] = None
     description: Optional[str] = None
-    snippet_tags: Optional[list[str]] = None 
+    snippet_tags: Optional[List[str]] = None 
     snippet_files: Optional[List[str]] = None
 
 class SearchResult(BaseModel):

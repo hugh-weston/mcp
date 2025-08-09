@@ -29,7 +29,7 @@ if log_file:
     try:
         log_dir = os.path.dirname(log_file)
         if log_dir and not os.path.exists(log_dir):
-            os.make_dirs(log_dir, exist_ok=True)
+            os.makedirs(log_dir, exist_ok=True)
         
         logger.add(log_file, level=log_level, format=log_format)
         # logger.add(sink=log_file, level=log_level, format=log_format)

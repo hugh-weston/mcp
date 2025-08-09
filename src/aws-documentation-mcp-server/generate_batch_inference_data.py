@@ -30,7 +30,7 @@ class BatchInferenceFormatter:
         """
         Generate the same prompt used in the original script.
         """
-        title = example.get("title", "")
+        example_name = example.get("example_name", "")
         description = example.get("description", "")
         code = example.get("code", "")
         
@@ -41,12 +41,13 @@ class BatchInferenceFormatter:
             prefix_note = ""
         
         prompt = f"""Given this AWS code example:
-Title: {title}
+Example name: {example_name}
 Description: {description}
 Code:
 {code}
 
-Write a detailed 1-5 sentence description of what this example does. Include relevant technical keywords and concepts that someone might use when searching for this type of example. Focus on the specific AWS services, programming patterns, and use cases demonstrated. Make the description clear and informative for developers looking to solve similar problems.
+Write a concise 1-4 sentence description of what this code example accomplishes. Focus on the specific functionality, key parameters, and practical use case without repeating common terms like "AWS," "example," "demonstrates," or "developers." 
+Emphasize unique technical details, service-specific operations, and the business problem it solves. Use varied vocabulary and avoid generic phrases.
 
 Description:"""
         
@@ -92,7 +93,7 @@ Description:"""
             "example_name": example.get("example_name"),
             "language": example.get("language"),
             "version": example.get("version"),
-            "title": example.get("title", ""),
+            # "title": example.get("title", ""),
             "prefix_note": prefix_note,
             "original_example": example
         }
