@@ -419,10 +419,6 @@ Examples:
     parser.add_argument("snippets_file", help="Path to example_meta_snippets.json file")
     parser.add_argument("output_file", help="Output JSON file for split examples")
     parser.add_argument(
-        "--combined-folder", "-c",
-        help="Path to combined snippet files folder for missing files"
-    )
-    parser.add_argument(
         "--languages", "-l", 
         nargs="+", 
         help="Filter by specific languages (case-insensitive)"

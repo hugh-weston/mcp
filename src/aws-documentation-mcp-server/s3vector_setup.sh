@@ -34,6 +34,7 @@ METADATA_FILE=""
 # - github: string - GitHub path relative to repository root
 # - title: string - Human-readable title of the example
 # - description: string - Brief description of what the example does
+# - bedrock_description - LLM-generated description of the code example
 # - vector_input: string - Combined text used for embedding generation
 # - code: string - Full example code
 
@@ -138,11 +139,10 @@ def process_batch(batch):
                 "version": code_example['version'],
                 "service": code_example['service'],
                 "category": code_example['category'],
-                "snippet_tags": code_example['snippet_tags'] if code_example['snippet_tags'] else "empty",
-                "snippet_files": code_example['snippet_files'] if code_example['snippet_files'] else "empty",
-                "github": code_example['github'] if code_example['github'] else "empty",
-                "title": code_example['title'],
-                "description": code_example['description'] if code_example['description'] else "empty",
+                "snippet_tags": code_example.get('snippet_tags', []) if code_example.get('snippet_tags') else "empty",
+                "snippet_files": code_example.get('snippet_files', []) if code_example.get('snippet_files') else "empty",
+                "github": code_example.get('github', '') if code_example.get('github') else "empty",
+                "description": code_example.get('bedrock_description', '') if code_example.get('bedrock_description') else "empty",
                 "code": code
             }
         }
