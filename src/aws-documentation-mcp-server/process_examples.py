@@ -133,6 +133,14 @@ def clean_html_tags(text: str) -> str:
     return clean_text
 
 
+def extract_aws_doc_urls(text: str) -> List[str]:
+    """Extract AWS documentation URLs from text using regex pattern."""
+    if not text:
+        return []
+    pattern = r"https?://docs\.aws\.amazon\.com/[^\s\)\"\'<>]+"
+    return list(set(re.findall(pattern, text)))
+
+
 def extract_language_examples(
     example_id: str, 
     example_data: Dict[str, Any],
@@ -205,6 +213,10 @@ def extract_language_examples(
             if clean_descriptions and clean_title:
                 clean_title = clean_html_tags(clean_title)
 
+            # Join descriptions and extract AWS doc URLs
+            full_description = " ".join(filter(None, descriptions))
+            doc_urls = extract_aws_doc_urls(full_description)
+
             # Create the language-specific example
             language_example = {
                 "example_name": example_id,
@@ -215,8 +227,9 @@ def extract_language_examples(
                 "snippet_files": snippet_files,
                 "github": version_data.get("github"),
                 "title": clean_title,
-                "description": " ".join(filter(None, descriptions)),
-                "category": example_data.get("category")
+                "description": full_description,
+                "category": example_data.get("category"),
+                "documentation_urls": doc_urls
             }
             
             language_examples.append(language_example)

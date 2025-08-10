@@ -145,7 +145,8 @@ The scripts produce an array of language-specific examples:
     "title": "Example Title",
     "description": "Combined synopsis and language-specific descriptions",
     "code": "Raw code from combined snippets",
-    "vector_input": "Title: Description\nCode:\n[code snippets]"
+    "vector_input": "Title: Description\nCode:\n[code snippets]",
+    "documentation_urls": ["https://docs.aws.amazon.com/..."]
   }
 ]
 ```
@@ -159,6 +160,7 @@ The scripts process code snippets and descriptions in two steps:
 1. `process_examples.py` generates:
 - `code`: Contains just the raw code from combined snippets, useful for direct code access
 - `vector_input`: A formatted string combining the title, description, and code in a structured format
+- `documentation_urls`: A list of AWS documentation URLs extracted from descriptions using regex pattern matching (only valid docs.aws.amazon.com URLs)
 
 2. `generate_bedrock_descriptions.py` adds:
 - `bedrock_description`: An AI-generated description optimized for natural language search queries

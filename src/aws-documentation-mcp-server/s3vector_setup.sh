@@ -66,7 +66,7 @@ aws s3vectors create-index \
     --distance-metric "cosine" \
     --data-type "float32" \
     --region $REGION \
-    --metadata-configuration '{"nonFilterableMetadataKeys":["description","code"]}'
+    --metadata-configuration '{"nonFilterableMetadataKeys":["description","code","documentation_urls"]}'
 
 echo -e "\033[1;32mVector index '$VECTOR_INDEX_NAME' created successfully!\033[0m"
 pause
@@ -142,8 +142,9 @@ def process_batch(batch):
                 "snippet_tags": code_example.get('snippet_tags', []) if code_example.get('snippet_tags') else "empty",
                 "snippet_files": code_example.get('snippet_files', []) if code_example.get('snippet_files') else "empty",
                 "github": code_example.get('github', '') if code_example.get('github') else "empty",
-                "description": code_example.get('bedrock_description', '') if code_example.get('bedrock_description') else "empty",
-                "code": code
+                    "description": code_example.get('bedrock_description', '') if code_example.get('bedrock_description') else "empty",
+                    "documentation_urls": code_example.get('documentation_urls', []) if code_example.get('documentation_urls') else "empty",
+                    "code": code
             }
         }
         vectors.append(vector)

@@ -28,6 +28,7 @@ class CodeExampleResult(BaseModel):
     description: Optional[str] = None
     snippet_tags: Optional[List[str]] = None 
     snippet_files: Optional[List[str]] = None
+    documentation_urls: Optional[List[str]] = None
 
 class SearchResult(BaseModel):
     """Search result from AWS documentation search."""

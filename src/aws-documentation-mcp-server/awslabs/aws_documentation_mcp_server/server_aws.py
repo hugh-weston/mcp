@@ -79,7 +79,7 @@ mcp = FastMCP(
     - Use `read_documentation` when: You have a specific documentation URL and need its content
     - Use `recommend` when: You want to find related content to a documentation page you're already viewing or need to find newly released information
     - Use `recommend` as a fallback when: Multiple searches have not yielded the specific information needed
-    - Use `search_code_examples` when: You need to find the available code examples related to a specific AWS service, action, and SDK
+    - Use `search_code_examples` when: You need to find the available code examples related to a specific AWS service, action, and SDK. Results may include links to github or relevant documentation.
     - Use `read_code_example` when: You have a specific code example name and need its content
     """,
     dependencies=[
@@ -131,6 +131,7 @@ async def search_code_examples(
         category: Optional category to filter by
     Returns:
         List of code examples matching the criteria, along with their metadata.
+        Results may include documentation_urls to be read in with read_documentation if additional context is needed.
     """
     logger.debug(
         f"Searching code examples with query: {query}, service: {service}, "
@@ -196,6 +197,11 @@ async def search_code_examples(
                         if vector["metadata"]["snippet_files"] != "empty"
                         else []
                     ),
+                    documentation_urls=(
+                        vector["metadata"]["documentation_urls"]
+                        if vector["metadata"]["documentation_urls"] != "empty"
+                        else []
+                    ),
                     category=vector["metadata"]["category"],
                 )
             )
@@ -224,6 +230,8 @@ async def read_code_example(
         )
 ) -> str:
     """Reads and returns the full file contents of one or more code examples.
+    
+    Note: Search results may include documentation_urls if additional context is needed.
 
     ## Usage
     After finding examples using search_code_examples, use this to read the actual code content.
