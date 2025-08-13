@@ -63,3 +63,6 @@ target/
 read_metadata.py
 example_meta.json
 example_meta_snippets.json
+code_embedding/
+*.json
+*.txt

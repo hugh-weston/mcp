@@ -38,7 +38,9 @@ Configure the MCP server in your MCP client configuration (e.g., for Amazon Q De
         "BEDROCK_TEXT_EMBEDDING_MODEL_ID": "text-embedding-id",
         "BEDROCK_REGION": "us-east-1",
         "SAGEMAKER_CODE_EMBEDDING_MODEL_ID": "code-embedding-id",
-        "SAGEMAKER_REGION": "us-east-1"
+        "SAGEMAKER_REGION": "us-east-1",
+        "CODE_CONTENT_S3_BUCKET": "code-content-bucket",
+        "CODE_CONTENT_S3_REGION": "us-east-1"
       },
       "disabled": false,
       "autoApprove": []
